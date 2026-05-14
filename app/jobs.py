@@ -76,6 +76,7 @@ class JobRead(BaseModel):
     payload: dict[str, Any]
     result: dict[str, Any] | None
     error: str | None
+    next_run_at: datetime
     created_at: datetime
     updated_at: datetime
 
