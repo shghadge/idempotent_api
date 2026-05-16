@@ -5,7 +5,7 @@ from json import dumps
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, select
 from sqlalchemy.exc import IntegrityError
@@ -77,6 +77,8 @@ class JobRead(BaseModel):
     result: dict[str, Any] | None
     error: str | None
     next_run_at: datetime
+    locked_at: datetime | None
+    locked_by: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -126,6 +128,25 @@ def create_job(
 
     response.status_code = status.HTTP_200_OK
     return existing_job
+
+
+@router.get("", response_model=list[JobRead])
+def list_jobs(
+    job_status: JobStatus | None = Query(default=None, alias="status"),
+    session: Session = Depends(get_session),
+) -> list[Job]:
+    statement = select(Job).order_by(Job.created_at)
+    if job_status is not None:
+        statement = statement.where(Job.status == job_status.value)
+    return list(session.scalars(statement))
+
+
+@router.get("/dead", response_model=list[JobRead])
+def list_dead_jobs(session: Session = Depends(get_session)) -> list[Job]:
+    statement = (
+        select(Job).where(Job.status == JobStatus.dead.value).order_by(Job.created_at)
+    )
+    return list(session.scalars(statement))
 
 
 @router.get("/{job_id}", response_model=JobRead)
