@@ -149,6 +149,33 @@ def list_dead_jobs(session: Session = Depends(get_session)) -> list[Job]:
     return list(session.scalars(statement))
 
 
+@router.post("/{job_id}/replay", response_model=JobRead)
+def replay_dead_job(job_id: str, session: Session = Depends(get_session)) -> Job:
+    job = session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    if job.status != JobStatus.dead.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only dead jobs can be replayed",
+        )
+
+    now = datetime.now(UTC)
+    job.status = JobStatus.queued.value
+    job.attempts = 0
+    job.result = None
+    job.error = None
+    job.next_run_at = now
+    job.locked_at = None
+    job.locked_by = None
+    job.updated_at = now
+    session.commit()
+    session.refresh(job)
+    return job
+
+
 @router.get("/{job_id}", response_model=JobRead)
 def get_job(job_id: str, session: Session = Depends(get_session)) -> Job:
     job = session.get(Job, job_id)

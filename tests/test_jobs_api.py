@@ -153,3 +153,51 @@ def test_dead_letter_endpoint_lists_dead_jobs(
     assert dead_jobs[0]["status"] == JobStatus.dead.value
     assert dead_jobs[0]["locked_at"] is None
     assert dead_jobs[0]["locked_by"] is None
+
+
+def test_replay_dead_job_requeues_it(client: TestClient, session: Session) -> None:
+    dead_job = Job(
+        idempotency_key="replay-dead-job",
+        payload={"task": "fail", "error": "temporary"},
+        payload_sha256=payload_fingerprint({"task": "fail", "error": "temporary"}),
+        status=JobStatus.dead.value,
+        attempts=5,
+        result={"partial": True},
+        error="temporary",
+        locked_by="old-worker",
+    )
+    session.add(dead_job)
+    session.commit()
+
+    response = client.post(f"/jobs/{dead_job.id}/replay")
+
+    assert response.status_code == 200
+    replayed_job = response.json()
+    assert replayed_job["id"] == dead_job.id
+    assert replayed_job["status"] == JobStatus.queued.value
+    assert replayed_job["attempts"] == 0
+    assert replayed_job["result"] is None
+    assert replayed_job["error"] is None
+    assert replayed_job["locked_at"] is None
+    assert replayed_job["locked_by"] is None
+
+
+def test_replay_non_dead_job_conflicts(client: TestClient) -> None:
+    create_response = client.post(
+        "/jobs",
+        headers={"Idempotency-Key": "replay-queued-job"},
+        json={"payload": {"task": "echo", "value": "queued"}},
+    )
+
+    response = client.post(f"/jobs/{create_response.json()['id']}/replay")
+
+    assert create_response.status_code == 201
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Only dead jobs can be replayed"}
+
+
+def test_replay_unknown_job_returns_not_found(client: TestClient) -> None:
+    response = client.post("/jobs/missing/replay")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job not found"}
