@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .database import create_schema
-from .jobs import router as jobs_router
+from .routes import router as jobs_router
 
 
 @asynccontextmanager

@@ -2,8 +2,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from app.database import Base
-from app.jobs import Job, JobStatus, get_session, payload_fingerprint
+from app.database import Base, get_session
+from app.jobs import Job, JobStatus, payload_fingerprint
 from app.main import create_app
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

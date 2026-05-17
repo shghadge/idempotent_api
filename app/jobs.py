@@ -5,16 +5,12 @@ from json import dumps
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
-from .database import Base, get_session
-
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+from .database import Base
 
 
 class JobStatus(StrEnum):
@@ -88,99 +84,3 @@ def payload_fingerprint(payload: dict[str, Any]) -> str:
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
     return sha256(canonical_payload.encode("utf-8")).hexdigest()
-
-
-@router.post("", response_model=JobRead, status_code=status.HTTP_201_CREATED)
-def create_job(
-    body: JobCreate,
-    response: Response,
-    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1),
-    session: Session = Depends(get_session),
-) -> Job:
-    fingerprint = payload_fingerprint(body.payload)
-    job = Job(
-        idempotency_key=idempotency_key,
-        payload=body.payload,
-        payload_sha256=fingerprint,
-    )
-    session.add(job)
-
-    try:
-        session.commit()
-        session.refresh(job)
-        return job
-    except IntegrityError:
-        session.rollback()
-
-    existing_job = session.scalar(
-        select(Job).where(Job.idempotency_key == idempotency_key)
-    )
-    if existing_job is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Idempotency key is already in use",
-        )
-    if existing_job.payload_sha256 != fingerprint:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Idempotency key was used with a different payload",
-        )
-
-    response.status_code = status.HTTP_200_OK
-    return existing_job
-
-
-@router.get("", response_model=list[JobRead])
-def list_jobs(
-    job_status: JobStatus | None = Query(default=None, alias="status"),
-    session: Session = Depends(get_session),
-) -> list[Job]:
-    statement = select(Job).order_by(Job.created_at)
-    if job_status is not None:
-        statement = statement.where(Job.status == job_status.value)
-    return list(session.scalars(statement))
-
-
-@router.get("/dead", response_model=list[JobRead])
-def list_dead_jobs(session: Session = Depends(get_session)) -> list[Job]:
-    statement = (
-        select(Job).where(Job.status == JobStatus.dead.value).order_by(Job.created_at)
-    )
-    return list(session.scalars(statement))
-
-
-@router.post("/{job_id}/replay", response_model=JobRead)
-def replay_dead_job(job_id: str, session: Session = Depends(get_session)) -> Job:
-    job = session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
-        )
-    if job.status != JobStatus.dead.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Only dead jobs can be replayed",
-        )
-
-    now = datetime.now(UTC)
-    job.status = JobStatus.queued.value
-    job.attempts = 0
-    job.result = None
-    job.error = None
-    job.next_run_at = now
-    job.locked_at = None
-    job.locked_by = None
-    job.updated_at = now
-    session.commit()
-    session.refresh(job)
-    return job
-
-
-@router.get("/{job_id}", response_model=JobRead)
-def get_job(job_id: str, session: Session = Depends(get_session)) -> Job:
-    job = session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
-        )
-    return job
