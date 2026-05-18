@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal
+from .database import SessionLocal, create_schema
 from .jobs import Job, JobStatus
 
 BACKOFF_BASE_SECONDS = 2
@@ -131,6 +131,7 @@ def recover_stale_jobs(
 
 
 def run_worker_loop(worker_id: str | None = None, poll_seconds: float = 1.0) -> None:
+    create_schema()
     resolved_worker_id = worker_id or f"worker-{os.getpid()}"
     while True:
         with SessionLocal() as session:
