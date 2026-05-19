@@ -17,6 +17,7 @@ STALE_LOCK_AFTER = timedelta(minutes=5)
 
 class JobExecutionError(Exception):
     """Raised when a job fails in the demo worker."""
+
     pass
 
 
