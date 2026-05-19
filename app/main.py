@@ -9,11 +9,13 @@ from .routes import router as jobs_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Create tables when the API starts."""
     create_schema()
     yield
 
 
 def create_app(*, init_schema: bool = True) -> FastAPI:
+    """Build the FastAPI app."""
     app = FastAPI(
         title="Idempotent Job Processing API",
         lifespan=lifespan if init_schema else None,

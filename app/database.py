@@ -16,13 +16,16 @@ SessionLocal = sessionmaker(
 
 
 class Base(DeclarativeBase):
+    """Base class for database models."""
     pass
 
 
 def create_schema() -> None:
+    """Create missing database tables."""
     Base.metadata.create_all(bind=engine)
 
 
 def get_session() -> Iterator[Session]:
+    """Provide one database session for a request."""
     with SessionLocal() as session:
         yield session

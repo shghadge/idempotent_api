@@ -16,6 +16,7 @@ STALE_LOCK_AFTER = timedelta(minutes=5)
 
 
 class JobExecutionError(Exception):
+    """Raised when a job fails in the demo worker."""
     pass
 
 
@@ -30,6 +31,7 @@ def backoff_delay(attempts: int) -> timedelta:
 def lease_next_job(
     session: Session, worker_id: str, now: datetime | None = None
 ) -> Job | None:
+    """Take the next ready job so one worker can run it."""
     lease_time = now or utc_now()
     job = session.scalar(
         select(Job)
@@ -49,6 +51,7 @@ def lease_next_job(
 
 
 def execute_job(job: Job) -> dict[str, Any]:
+    """Run the small demo task stored in the job payload."""
     task = job.payload.get("task")
     if task == "fail":
         error = job.payload.get("error", "job failed")
@@ -61,6 +64,7 @@ def execute_job(job: Job) -> dict[str, Any]:
 def finish_job(
     session: Session, job: Job, result: dict[str, Any], now: datetime | None = None
 ) -> Job:
+    """Mark a job as finished."""
     finished_at = now or utc_now()
     job.status = JobStatus.succeeded.value
     job.attempts += 1
@@ -77,6 +81,7 @@ def finish_job(
 def fail_job(
     session: Session, job: Job, error: str, now: datetime | None = None
 ) -> Job:
+    """Save a failure and either retry or dead-letter the job."""
     failed_at = now or utc_now()
     job.attempts += 1
     job.result = None
@@ -97,6 +102,7 @@ def fail_job(
 
 
 def run_job_once(session: Session, worker_id: str) -> Job | None:
+    """Lease and process one job if one is ready."""
     job = lease_next_job(session, worker_id)
     if job is None:
         return None
@@ -114,6 +120,7 @@ def recover_stale_jobs(
     now: datetime | None = None,
     stale_after: timedelta = STALE_LOCK_AFTER,
 ) -> int:
+    """Put jobs from dead workers back in the queue."""
     cutoff = (now or utc_now()) - stale_after
     stale_jobs = session.scalars(
         select(Job)
@@ -131,6 +138,7 @@ def recover_stale_jobs(
 
 
 def run_worker_loop(worker_id: str | None = None, poll_seconds: float = 1.0) -> None:
+    """Run the worker until the process is stopped."""
     create_schema()
     resolved_worker_id = worker_id or f"worker-{os.getpid()}"
     while True:

@@ -22,6 +22,8 @@ class JobStatus(StrEnum):
 
 
 class Job(Base):
+    """A submitted job stored in the database."""
+
     __tablename__ = "jobs"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_jobs_idempotency_key"),
@@ -80,6 +82,7 @@ class JobRead(BaseModel):
 
 
 def payload_fingerprint(payload: dict[str, Any]) -> str:
+    """Return a stable hash for a JSON payload."""
     canonical_payload = dumps(
         payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )

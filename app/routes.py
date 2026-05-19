@@ -18,7 +18,7 @@ def create_job(
     idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1),
     session: Session = Depends(get_session),
 ) -> Job:
-
+    """Create a job or return the existing job for this key."""
     fingerprint = payload_fingerprint(body.payload)
     job = Job(
         idempotency_key=idempotency_key,
@@ -57,6 +57,7 @@ def list_jobs(
     job_status: JobStatus | None = Query(default=None, alias="status"),
     session: Session = Depends(get_session),
 ) -> list[Job]:
+    """List jobs, optionally filtered by status."""
     statement = select(Job).order_by(Job.created_at)
     if job_status is not None:
         statement = statement.where(Job.status == job_status.value)
@@ -65,6 +66,7 @@ def list_jobs(
 
 @router.get("/dead", response_model=list[JobRead])
 def list_dead_jobs(session: Session = Depends(get_session)) -> list[Job]:
+    """List jobs that exhausted their retries."""
     statement = (
         select(Job).where(Job.status == JobStatus.dead.value).order_by(Job.created_at)
     )
@@ -73,7 +75,7 @@ def list_dead_jobs(session: Session = Depends(get_session)) -> list[Job]:
 
 @router.post("/{job_id}/replay", response_model=JobRead)
 def replay_dead_job(job_id: str, session: Session = Depends(get_session)) -> Job:
-
+    """Move a dead job back to the queue."""
     job = session.get(Job, job_id)
     if job is None:
         raise HTTPException(
@@ -102,6 +104,7 @@ def replay_dead_job(job_id: str, session: Session = Depends(get_session)) -> Job
 
 @router.get("/{job_id}", response_model=JobRead)
 def get_job(job_id: str, session: Session = Depends(get_session)) -> Job:
+    """Return one job by id."""
     job = session.get(Job, job_id)
     if job is None:
         raise HTTPException(
